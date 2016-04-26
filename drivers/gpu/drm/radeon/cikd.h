@@ -1565,6 +1565,8 @@
 #       define RASTER_CONFIG_RB_MAP_3                   3
 #define		PKR_MAP(x)				((x) << 8)
 
+#define PA_SC_RASTER_CONFIG_1                           0x28354
+
 #define VGT_EVENT_INITIATOR                             0x28a90
 #       define SAMPLE_STREAMOUTSTATS1                   (1 << 0)
 #       define SAMPLE_STREAMOUTSTATS2                   (2 << 0)

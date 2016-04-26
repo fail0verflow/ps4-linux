@@ -4135,7 +4135,10 @@ static void cik_setup_rb(struct radeon_device *rdev,
 			}
 			enabled_rbs >>= 2;
 		}
-		WREG32(PA_SC_RASTER_CONFIG, data);
+		printk("%d,0x%x\n", i, data);
+		/*WREG32(PA_SC_RASTER_CONFIG, data);*/
+		WREG32(PA_SC_RASTER_CONFIG, 0x2a00161a);
+		WREG32(PA_SC_RASTER_CONFIG_1, 0);
 	}
 	cik_select_se_sh(rdev, 0xffffffff, 0xffffffff);
 	mutex_unlock(&rdev->grbm_idx_mutex);
