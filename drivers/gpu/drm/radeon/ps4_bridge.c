@@ -1,5 +1,5 @@
 /*
- * Panasonic MN86471A DP->HDMI bridge driver (via PS4 Aeolia ICC interface)
+ * Panasonic mn864729 DP->HDMI bridge driver (via PS4 Aeolia ICC interface)
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -121,7 +121,7 @@ struct i2c_cmdqueue {
 	struct i2c_cmd_hdr *cmd;
 };
 
-struct mn86471a_bridge {
+struct mn864729_bridge {
 	struct drm_connector *connector;
 	struct drm_encoder *encoder;
 	struct drm_bridge bridge;
@@ -133,7 +133,7 @@ struct mn86471a_bridge {
 
 /* this should really be taken care of by the connector, but that is currently
  * contained/owned by radeon_connector so just use a global for now */
-static struct mn86471a_bridge g_bridge = {
+static struct mn864729_bridge g_bridge = {
 	.mutex = __MUTEX_INITIALIZER(g_bridge.mutex)
 };
 
@@ -171,10 +171,10 @@ static int cq_exec(struct i2c_cmdqueue *q)
 
 	q->cmd->length = q->p - (u8 *)q->cmd;
 	q->req.length = q->p - (u8 *)&q->req;
-	
+
 	res = apcie_icc_cmd(0x10, 0, &q->req, q->req.length,
 		      &q->reply, sizeof(q->reply));
-	
+
 	if (res < 5) {
 		DRM_ERROR("icc i2c commandqueue failed: %d\n", res);
 		return -EIO;
@@ -257,18 +257,18 @@ static void cq_wait_clear(struct i2c_cmdqueue *q, u16 addr, u8 mask)
 	*q->p++ = mask;
 }
 
-static inline struct mn86471a_bridge *
-		bridge_to_mn86471a(struct drm_bridge *bridge)
+static inline struct mn864729_bridge *
+		bridge_to_mn864729(struct drm_bridge *bridge)
 {
-	return container_of(bridge, struct mn86471a_bridge, bridge);
+	return container_of(bridge, struct mn864729_bridge, bridge);
 }
 
-static void mn86471a_mode_set(struct drm_bridge *bridge,
+static void mn864729_mode_set(struct drm_bridge *bridge,
 			      struct drm_display_mode *mode,
 			      struct drm_display_mode *adjusted_mode)
 {
-	struct mn86471a_bridge *mn_bridge = bridge_to_mn86471a(bridge);
-	
+	struct mn864729_bridge *mn_bridge = bridge_to_mn864729(bridge);
+
 	/* This gets called before pre_enable/enable, so we just stash
 	 * the vic ID for later */
 	mn_bridge->mode = drm_match_cea_mode(adjusted_mode);
@@ -278,10 +278,10 @@ static void mn86471a_mode_set(struct drm_bridge *bridge,
 	}
 }
 
-static void mn86471a_pre_enable(struct drm_bridge *bridge)
+static void mn864729_pre_enable(struct drm_bridge *bridge)
 {
-	struct mn86471a_bridge *mn_bridge = bridge_to_mn86471a(bridge);
-	DRM_DEBUG_KMS("mn86471a_pre_enable\n");
+	struct mn864729_bridge *mn_bridge = bridge_to_mn864729(bridge);
+	DRM_DEBUG_KMS("mn864729_pre_enable\n");
 
 	mutex_lock(&mn_bridge->mutex);
 	cq_init(&mn_bridge->cq, 4);
@@ -340,16 +340,16 @@ static void mn86471a_pre_enable(struct drm_bridge *bridge)
 	cq_writereg(&mn_bridge->cq, AKESRST, 0xff);
 	/* Wait AKE busy */
 	cq_wait_clear(&mn_bridge->cq, AKESTA, AKESTA_BUSY);
-	
+
 	if (cq_exec(&mn_bridge->cq) < 0) {
 		DRM_ERROR("failed to run pre-enable sequence");
 	}
 	mutex_unlock(&mn_bridge->mutex);
 }
 
-static void mn86471a_enable(struct drm_bridge *bridge)
+static void mn864729_enable(struct drm_bridge *bridge)
 {
-	struct mn86471a_bridge *mn_bridge = bridge_to_mn86471a(bridge);
+	struct mn864729_bridge *mn_bridge = bridge_to_mn864729(bridge);
 	u8 dp[3];
 
 	if (!mn_bridge->mode) {
@@ -357,77 +357,70 @@ static void mn86471a_enable(struct drm_bridge *bridge)
 		return;
 	}
 
-	DRM_DEBUG_KMS("mn86471a_enable (mode: %d)\n", mn_bridge->mode);
-	
+	DRM_DEBUG_KMS("mn864729_enable (mode: %d)\n", mn_bridge->mode);
+
 	/* Here come the dragons */
 
 	mutex_lock(&mn_bridge->mutex);
 	cq_init(&mn_bridge->cq, 4);
-	/* Read DisplayPort status (?) */
-	cq_read(&mn_bridge->cq, 0x76e1, 3);
-	if (cq_exec(&mn_bridge->cq) < 11) {
-		mutex_unlock(&mn_bridge->mutex);
-		DRM_ERROR("could not read DP status");
-		return;
-	}
-	memcpy(dp, &mn_bridge->cq.reply.databuf[3], 3);
 
-	cq_init(&mn_bridge->cq, 4);
+	cq_mask(&mn_bridge->cq, 0x6005, 0x01, 0x01);
+	cq_writereg(&mn_bridge->cq, 0x6a03, 0x47);
+
 
 	/* Wait for DP lane status */
-	cq_wait_set(&mn_bridge->cq, 0x761e, 0x77);
-	cq_wait_set(&mn_bridge->cq, 0x761f, 0x77);
+
+	cq_wait_set(&mn_bridge->cq, 0x60f8, 0xff);
+	cq_wait_set(&mn_bridge->cq, 0x60f9, 0x01);
 	/* Wait for ?? */
-	cq_wait_set(&mn_bridge->cq, 0x7669, 0x01);
+	cq_writereg(&mn_bridge->cq, 0x6a01, 0x4d);
+	cq_wait_set(&mn_bridge->cq, 0x60f9, 0x1a);
 
-	cq_writereg(&mn_bridge->cq, 0x76d9, (dp[0] & 0x1f) | (dp[0] << 5));
-	cq_writereg(&mn_bridge->cq, 0x76da, (dp[1] & 0x7c) | ((dp[0] >> 3) & 3) | ((dp[1] << 5) & 0x80));
-	cq_writereg(&mn_bridge->cq, 0x76db, 0x80 | ((dp[1] >> 3) & 0xf));
-	cq_writereg(&mn_bridge->cq, 0x76e4, 0x01);
+
+	cq_mask(&mn_bridge->cq, 0x1e00, 0x00, 0x01);
+	cq_mask(&mn_bridge->cq, 0x1e02, 0x00, 0x70);
+
+	cq_writereg(&mn_bridge->cq, 0x6020, 0x00);
+	cq_writereg(&mn_bridge->cq, 0x7402, 0x1c);
+	cq_writereg(&mn_bridge->cq, 0x6020, 0x04);
 	cq_writereg(&mn_bridge->cq, TSYSCTRL, TSYSCTRL_HDMI);
-	cq_writereg(&mn_bridge->cq, VINCNT, VINCNT_VIF_FILEN);
-	cq_writereg(&mn_bridge->cq, 0x7071, 0);
-	cq_writereg(&mn_bridge->cq, 0x7062, mn_bridge->mode);
-	cq_writereg(&mn_bridge->cq, 0x765a, 0);
-	cq_writereg(&mn_bridge->cq, 0x7062, mn_bridge->mode | 0x80);
-	cq_writereg(&mn_bridge->cq, 0x7215, 0x28); /* aspect */
-	cq_writereg(&mn_bridge->cq, 0x7217, mn_bridge->mode);
-	cq_writereg(&mn_bridge->cq, 0x7218, 0);
-	cq_writereg(&mn_bridge->cq, CSCMOD, 0xdc);
-	cq_writereg(&mn_bridge->cq, C420SET, 0xaa);
-	cq_writereg(&mn_bridge->cq, TDPCMODE, 0x4a);
-	cq_writereg(&mn_bridge->cq, OUTWSET, 0x00);
-	cq_writereg(&mn_bridge->cq, 0x70c4, 0x08);
-	cq_writereg(&mn_bridge->cq, 0x70c5, 0x08);
-	cq_writereg(&mn_bridge->cq, 0x7096, 0xff);
-	cq_writereg(&mn_bridge->cq, 0x7027, 0x00);
-	cq_writereg(&mn_bridge->cq, 0x7020, 0x20);
-	cq_writereg(&mn_bridge->cq, 0x700b, 0x01);
-	cq_writereg(&mn_bridge->cq, PKTENA, 0x20);
-	cq_writereg(&mn_bridge->cq, 0x7096, 0xff);
-	cq_writereg(&mn_bridge->cq, INFENA, INFENA_AVIEN);
-	cq_writereg(&mn_bridge->cq, UPDCTRL, UPDCTRL_ALLUPD | UPDCTRL_AVIIUPD |
-					     UPDCTRL_CLKUPD | UPDCTRL_VIFUPD |
-					     UPDCTRL_CSCUPD);
-	cq_wait_set(&mn_bridge->cq, 0x7096, 0x80);
+	cq_writereg(&mn_bridge->cq, 0x10c7, 0x38);
+	cq_writereg(&mn_bridge->cq, 0x1e02, 0x88);
+	cq_writereg(&mn_bridge->cq, 0x1e00, 0x66);
+	cq_writereg(&mn_bridge->cq, 0x100c, 0x01);
+	cq_writereg(&mn_bridge->cq, TSYSCTRL, TSYSCTRL_HDMI);
 
-	cq_mask(&mn_bridge->cq, 0x7216, 0x00, 0x80);
-	cq_writereg(&mn_bridge->cq, 0x7218, 0x00);
-
-	cq_writereg(&mn_bridge->cq, 0x7096, 0xff);
-	cq_writereg(&mn_bridge->cq, VMUTECNT, VMUTECNT_LINEWIDTH_90 | VMUTECNT_VMUTE_MUTE_NORMAL);
-	cq_writereg(&mn_bridge->cq, 0x7016, 0x04);
-	cq_writereg(&mn_bridge->cq, 0x7a88, 0xff);
-	cq_writereg(&mn_bridge->cq, 0x7a83, 0x88);
+	cq_writereg(&mn_bridge->cq, 0x7009, 0x00);
+	cq_writereg(&mn_bridge->cq, 0x7040, 0x42);
+	cq_writereg(&mn_bridge->cq, 0x7225, 0x28);
+	cq_writereg(&mn_bridge->cq, 0x7227, mn_bridge->mode);
+	cq_writereg(&mn_bridge->cq, 0x7228, 0x00);
+	cq_writereg(&mn_bridge->cq, 0x7070, mn_bridge->mode);
+	cq_writereg(&mn_bridge->cq, 0x7071, mn_bridge->mode | 0x80);
+	cq_writereg(&mn_bridge->cq, 0x7072, 0x00);
+	cq_writereg(&mn_bridge->cq, 0x7073, 0x00);
+	cq_writereg(&mn_bridge->cq, 0x7074, 0x00);
+	cq_writereg(&mn_bridge->cq, 0x7075, 0x00);
+	cq_writereg(&mn_bridge->cq, 0x70c4, 0x0a);
+	cq_writereg(&mn_bridge->cq, 0x70c5, 0x0a);
+	cq_writereg(&mn_bridge->cq, 0x70c2, 0x00);
+	cq_writereg(&mn_bridge->cq, 0x70fe, 0x12);
+	cq_writereg(&mn_bridge->cq, 0x70c3, 0x10);
+	cq_writereg(&mn_bridge->cq, 0x10c5, 0x00);
+	cq_writereg(&mn_bridge->cq, 0x10f6, 0xff);
+	cq_writereg(&mn_bridge->cq, 0x7202, 0x20);
+	cq_writereg(&mn_bridge->cq, 0x7203, 0x60);
+	cq_writereg(&mn_bridge->cq, 0x7011, 0xd5);
+	cq_writereg(&mn_bridge->cq, 0x7a00, 0x0e);
+	cq_wait_set(&mn_bridge->cq, 0x10f6, 0x80);
+	cq_mask(&mn_bridge->cq, 0x7226, 0x00, 0x80);
+	cq_mask(&mn_bridge->cq, 0x7228, 0x00, 0xFF);
 	cq_writereg(&mn_bridge->cq, 0x7204, 0x40);
-	
-	cq_wait_set(&mn_bridge->cq, 0x7096, 0x80);
-	
-	cq_writereg(&mn_bridge->cq, 0x7006, 0x02);
-	cq_writereg(&mn_bridge->cq, 0x7020, 0x21);
-	cq_writereg(&mn_bridge->cq, 0x7a8b, 0x00);
-	cq_writereg(&mn_bridge->cq, 0x7020, 0x21);
-
+	cq_wait_clear(&mn_bridge->cq, 0x7204, 0x40);
+	cq_writereg(&mn_bridge->cq, 0x7a8b, 0x05);
+	cq_mask(&mn_bridge->cq, 0x1e02, 0x70, 0x70);
+	cq_mask(&mn_bridge->cq, 0x1034, 0x02, 0x02);
+	cq_mask(&mn_bridge->cq, 0x1e00, 0x01, 0x01);
 	cq_writereg(&mn_bridge->cq, VMUTECNT, VMUTECNT_LINEWIDTH_90);
 	if (cq_exec(&mn_bridge->cq) < 0) {
 		DRM_ERROR("Failed to configure bridge mode\n");
@@ -436,10 +429,10 @@ static void mn86471a_enable(struct drm_bridge *bridge)
 	mutex_unlock(&mn_bridge->mutex);
 }
 
-static void mn86471a_disable(struct drm_bridge *bridge)
+static void mn864729_disable(struct drm_bridge *bridge)
 {
-	struct mn86471a_bridge *mn_bridge = bridge_to_mn86471a(bridge);
-	DRM_DEBUG_KMS("mn86471a_disable\n");
+	struct mn864729_bridge *mn_bridge = bridge_to_mn864729(bridge);
+	DRM_DEBUG_KMS("mn864729_disable\n");
 
 	mutex_lock(&mn_bridge->mutex);
 	cq_init(&mn_bridge->cq, 4);
@@ -451,10 +444,10 @@ static void mn86471a_disable(struct drm_bridge *bridge)
 	mutex_unlock(&mn_bridge->mutex);
 }
 
-static void mn86471a_post_disable(struct drm_bridge *bridge)
+static void mn864729_post_disable(struct drm_bridge *bridge)
 {
-	/* struct mn86471a_bridge *mn_bridge = bridge_to_mn86471a(bridge); */
-	DRM_DEBUG_KMS("mn86471a_post_disable\n");
+	/* struct mn864729_bridge *mn_bridge = bridge_to_mn864729(bridge); */
+	DRM_DEBUG_KMS("mn864729_post_disable\n");
 }
 
 /* Hardcoded modes, since we don't really know how to do custom modes yet.
@@ -482,11 +475,11 @@ static const struct drm_display_mode mode_1080p = {
 	.vrefresh = 60, .picture_aspect_ratio = HDMI_PICTURE_ASPECT_16_9
 };
 
-int mn86471a_get_modes(struct drm_connector *connector)
+int mn864729_get_modes(struct drm_connector *connector)
 {
 	struct drm_device *dev = connector->dev;
 	struct drm_display_mode *newmode;
-	DRM_DEBUG_KMS("mn86471a_get_modes\n");
+	DRM_DEBUG_KMS("mn864729_get_modes\n");
 
 	newmode = drm_mode_duplicate(dev, &mode_1080p);
 	drm_mode_probed_add(connector, newmode);
@@ -500,10 +493,10 @@ int mn86471a_get_modes(struct drm_connector *connector)
 	return 0;
 }
 
-enum drm_connector_status mn86471a_detect(struct drm_connector *connector,
+enum drm_connector_status mn864729_detect(struct drm_connector *connector,
 		bool force)
 {
-	struct mn86471a_bridge *mn_bridge = &g_bridge;
+	struct mn864729_bridge *mn_bridge = &g_bridge;
 	u8 reg;
 
 	struct radeon_connector *radeon_connector = to_radeon_connector(connector);
@@ -522,7 +515,7 @@ enum drm_connector_status mn86471a_detect(struct drm_connector *connector,
 	}
 	reg = mn_bridge->cq.reply.databuf[3];
 	mutex_unlock(&mn_bridge->mutex);
-	
+
 	DRM_DEBUG_KMS("TMONREG=0x%02x\n", reg);
 
 	if (reg & TMONREG_HPD)
@@ -531,7 +524,7 @@ enum drm_connector_status mn86471a_detect(struct drm_connector *connector,
 		return connector_status_disconnected;
 }
 
-int mn86471a_mode_valid(struct drm_connector *connector,
+int mn864729_mode_valid(struct drm_connector *connector,
 				  struct drm_display_mode *mode)
 {
 	int vic = drm_match_cea_mode(mode);
@@ -544,32 +537,32 @@ int mn86471a_mode_valid(struct drm_connector *connector,
 	return MODE_OK;
 }
 
-static int mn86471a_bridge_attach(struct drm_bridge *bridge)
+static int mn864729_bridge_attach(struct drm_bridge *bridge)
 {
-	/* struct mn86471a_bridge *mn_bridge = bridge_to_mn86471a(bridge); */
+	/* struct mn864729_bridge *mn_bridge = bridge_to_mn864729(bridge); */
 
 	return 0;
 }
 
-static struct drm_bridge_funcs mn86471a_bridge_funcs = {
-	.pre_enable = mn86471a_pre_enable,
-	.enable = mn86471a_enable,
-	.disable = mn86471a_disable,
-	.post_disable = mn86471a_post_disable,
-	.attach = mn86471a_bridge_attach,
-	.mode_set = mn86471a_mode_set
+static struct drm_bridge_funcs mn864729_bridge_funcs = {
+	.pre_enable = mn864729_pre_enable,
+	.enable = mn864729_enable,
+	.disable = mn864729_disable,
+	.post_disable = mn864729_post_disable,
+	.attach = mn864729_bridge_attach,
+	.mode_set = mn864729_mode_set
 };
 
-int mn86471a_bridge_register(struct drm_connector *connector,
+int mn864729_bridge_register(struct drm_connector *connector,
 			     struct drm_encoder *encoder)
 {
 	int ret;
-	struct mn86471a_bridge *mn_bridge = &g_bridge;
+	struct mn864729_bridge *mn_bridge = &g_bridge;
 	struct drm_device *dev = connector->dev;
 
 	mn_bridge->encoder = encoder;
 	mn_bridge->connector = connector;
-	mn_bridge->bridge.funcs = &mn86471a_bridge_funcs;
+	mn_bridge->bridge.funcs = &mn864729_bridge_funcs;
 	ret = drm_bridge_attach(dev, &mn_bridge->bridge);
 	if (ret) {
 		DRM_ERROR("Failed to initialize bridge with drm\n");
@@ -580,5 +573,3 @@ int mn86471a_bridge_register(struct drm_connector *connector,
 
 	return 0;
 }
-
-
