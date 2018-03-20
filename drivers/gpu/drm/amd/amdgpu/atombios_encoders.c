@@ -450,9 +450,12 @@ int amdgpu_atombios_encoder_get_encoder_mode(struct drm_encoder *encoder)
 	struct drm_connector *connector;
 	struct amdgpu_connector *amdgpu_connector;
 	struct amdgpu_connector_atom_dig *dig_connector;
+	struct drm_device *dev = encoder->dev;
+	struct amdgpu_device *adev = dev->dev_private;
 
 	/* dp bridges are always DP */
-	if (amdgpu_encoder_get_dp_bridge_encoder_id(encoder) != ENCODER_OBJECT_ID_NONE)
+	if (amdgpu_encoder_get_dp_bridge_encoder_id(encoder) != ENCODER_OBJECT_ID_NONE || 
+	adev->asic_type == CHIP_LIVERPOOL)
 		return ATOM_ENCODER_MODE_DP;
 
 	/* DVO is always DVO */

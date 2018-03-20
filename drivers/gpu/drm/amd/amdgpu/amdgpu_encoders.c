@@ -31,6 +31,22 @@
 #include "atom.h"
 #include "atombios_encoders.h"
 
+#ifdef CONFIG_X86_PS4
+int mn86471a_bridge_register(struct drm_connector *connector,
+			     struct drm_encoder *encoder);
+
+static void amdgpu_maybe_add_bridge(struct drm_connector *connector,
+				    struct drm_encoder *encoder)
+{
+	struct drm_device *dev = connector->dev;
+	struct amdgpu_device *adev = dev->dev_private;
+
+	if (adev->asic_type == CHIP_LIVERPOOL) {
+		mn86471a_bridge_register(connector, encoder);
+	} 
+}
+#endif
+
 void
 amdgpu_link_encoder_connector(struct drm_device *dev)
 {
@@ -46,6 +62,9 @@ amdgpu_link_encoder_connector(struct drm_device *dev)
 		list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
 			amdgpu_encoder = to_amdgpu_encoder(encoder);
 			if (amdgpu_encoder->devices & amdgpu_connector->devices) {
+#ifdef CONFIG_X86_PS4
+				amdgpu_maybe_add_bridge(connector, encoder);
+#endif
 				drm_mode_connector_attach_encoder(connector, encoder);
 				if (amdgpu_encoder->devices & (ATOM_DEVICE_LCD_SUPPORT)) {
 					amdgpu_atombios_encoder_init_backlight(amdgpu_encoder, connector);

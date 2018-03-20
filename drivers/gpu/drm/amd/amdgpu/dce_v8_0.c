@@ -1229,6 +1229,8 @@ static void dce_v8_0_bandwidth_update(struct amdgpu_device *adev)
 	struct drm_display_mode *mode = NULL;
 	u32 num_heads = 0, lb_size;
 	int i;
+	// FIXME PS4: this stuff is broken
+	return;
 
 	amdgpu_update_display_priority(adev);
 

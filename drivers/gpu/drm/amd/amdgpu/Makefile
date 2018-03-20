@@ -111,6 +111,7 @@ amdgpu-$(CONFIG_VGA_SWITCHEROO) += amdgpu_atpx_handler.o
 amdgpu-$(CONFIG_ACPI) += amdgpu_acpi.o
 amdgpu-$(CONFIG_MMU_NOTIFIER) += amdgpu_mn.o
 
+amdgpu-$(CONFIG_X86_PS4) += ps4_bridge.o
 include $(FULL_AMD_PATH)/powerplay/Makefile
 
 amdgpu-y += $(AMD_POWERPLAY_FILES)
