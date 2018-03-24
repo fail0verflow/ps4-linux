@@ -1852,21 +1852,21 @@ static const struct drm_connector_funcs radeon_dp_connector_funcs = {
 };
 
 #ifdef CONFIG_X86_PS4
-int mn864729_get_modes(struct drm_connector *connector);
-enum drm_connector_status mn864729_detect(struct drm_connector *connector,
+int ps4_bridge_get_modes(struct drm_connector *connector);
+enum drm_connector_status ps4_bridge_detect(struct drm_connector *connector,
 					  bool force);
-int mn864729_mode_valid(struct drm_connector *connector,
+int ps4_bridge_mode_valid(struct drm_connector *connector,
 			struct drm_display_mode *mode);
 
 static const struct drm_connector_helper_funcs radeon_ps4_dp_connector_helper_funcs = {
-	.get_modes = mn864729_get_modes,
-	.mode_valid = mn864729_mode_valid,
+	.get_modes = ps4_bridge_get_modes,
+	.mode_valid = ps4_bridge_mode_valid,
 	.best_encoder = radeon_dvi_encoder,
 };
 
 static const struct drm_connector_funcs radeon_ps4_dp_connector_funcs = {
 	.dpms = drm_helper_connector_dpms,
-	.detect = mn864729_detect,
+	.detect = ps4_bridge_detect,
 	.fill_modes = drm_helper_probe_single_connector_modes,
 	//.set_property = radeon_connector_set_property,
 	.destroy = radeon_connector_destroy,

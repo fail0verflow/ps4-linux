@@ -198,7 +198,7 @@ static void radeon_encoder_add_backlight(struct radeon_encoder *radeon_encoder,
 }
 
 #ifdef CONFIG_X86_PS4
-int mn864729_bridge_register(struct drm_connector *connector,
+int ps4_bridge_register(struct drm_connector *connector,
 			     struct drm_encoder *encoder);
 
 static void radeon_maybe_add_bridge(struct drm_connector *connector,
@@ -208,7 +208,7 @@ static void radeon_maybe_add_bridge(struct drm_connector *connector,
 	struct radeon_device *rdev = dev->dev_private;
 
 	if (rdev->family == CHIP_LIVERPOOL) {
-		mn864729_bridge_register(connector, encoder);
+		ps4_bridge_register(connector, encoder);
 	}
 }
 #endif
